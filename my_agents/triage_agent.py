@@ -1,11 +1,20 @@
+import streamlit as st
 from agents import (
     Agent, 
     RunContextWrapper,
     input_guardrail,
     Runner,
     GuardrailFunctionOutput,
+    handoff, # hand off 사용시 유용한 기능
 )
-from models import UserAccountContext, InputGuardRailOutput
+from agents.extensions.handoff_prompt import RECOMMENDED_PROMPT_PREFIX # hand off 사용시 prompt 앞에 추가되는 prefix
+from agents.extensions import handoff_filters # handoff agent에 전달되는 prompt에서 필요없는 텍스트를 걸러주는 기능
+from models import UserAccountContext, InputGuardRailOutput, HandoffData
+from my_agents.order_agent import order_agent
+from my_agents.account_agent import account_agent
+from my_agents.billing_agnet import billing_agent
+from my_agents.technical_agent import technical_agent
+
 
 input_guardrail_agent = Agent(
     name="Input Guardrail Agent",
@@ -37,6 +46,9 @@ def dynamic_triage_agent_instructions(
     agent: Agent[UserAccountContext],
 ):
     return f"""
+        {RECOMMENDED_PROMPT_PREFIX}
+
+
         You are a customer support agent. You ONLY help customers with their questions about their User Account, Billing, Orders, or Technical Support.
         You call customers by their name.
         
@@ -89,10 +101,47 @@ def dynamic_triage_agent_instructions(
         - Unclear issues: Ask 1-2 clarifying questions before routing
     """
 
+def handle_handoff(
+    wrapper: RunContextWrapper[UserAccountContext],
+    input_data: HandoffData,
+):
+    with st.sidebar:
+        st.write(
+            f"""
+            Hnading off to {input_data.to_agent_name}
+            Reason: {input_data.reason}
+            Issue Type: {input_data.issue_type}
+            Description: {input_data.issue_description}
+        """
+        )
+
+def make_handoff(agent):
+    return handoff(
+        agent=agent,
+        on_handoff=handle_handoff,
+        input_type=HandoffData,
+        input_filter=handoff_filters.remove_all_tools,
+    )
+
 triage_agent = Agent(
     name="Triage Agent",
     instructions=dynamic_triage_agent_instructions,
     input_guardrails=[
         off_topic_guardrail,
-    ]
+    ],
+    # handoff 시 agent를 tool로 전달하는 예시.
+    # tool로 전달하는 경우 기존 agent와의 연결이 끊기지 않음.
+    # tools=[
+    #     technical_agent.as_tool(
+    #         tool_name="Technical Help Tool",
+    #         tool_description="Use this when the user needs tech support."
+    #     )
+    # ]
+    handoffs=[
+        make_handoff(technical_agent),
+        make_handoff(billing_agent),
+        make_handoff(order_agent),
+        make_handoff(account_agent),
+        # technical_agent, # handoff 시 agent를 직접 전달하는 예시
+    ],
 )
