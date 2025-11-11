@@ -13,6 +13,12 @@ class InputGuardRailOutput(BaseModel):
     reason: str
 
 
+class TechnicalOutputGuardRailOutput(BaseModel):
+    contains_off_topic: bool
+    contains_billing_data: bool
+    contains_account_data: bool
+    reason: str
+
 # Handoff 시 로깅을 위한 데이터 모델
 class HandoffData(BaseModel):
     to_agent_name: str
